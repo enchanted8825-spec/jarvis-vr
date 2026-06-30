@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>J.A.R.V.I.S. VR</title>
+<style>
+  :root {
+    --hud-blue: #4fd8ff;
+    --hud-blue-dim: #1a7a99;
+    --hud-bg: #050a0f;
+    --hud-text: #cdf3ff;
+    --hud-muted: #4a7a8a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--hud-bg); color: var(--hud-text);
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+  }
+  #canvasWrap { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  #overlay {
+    position: fixed; inset: 0; z-index: 5;
+    display: flex; flex-direction: column;
+    pointer-events: none;
+  }
+  #overlay > * { pointer-events: auto; }
+
+  header {
+    padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--hud-blue-dim);
+    background: rgba(5,10,15,0.6);
+  }
+  header .title { font-size: 13px; letter-spacing: 4px; color: var(--hud-blue); font-weight: 600; }
+  #vrBtnHolder button {
+    background: rgba(10,22,32,0.85); border: 1px solid var(--hud-blue-dim);
+    color: var(--hud-blue); padding: 8px 16px; border-radius: 20px; font-size: 12px;
+    letter-spacing: 1px; cursor: pointer;
+  }
+  #settingsBtn {
+    background: none; border: 1px solid var(--hud-blue-dim); color: var(--hud-blue);
+    border-radius: 50%; width: 30px; height: 30px; font-size: 14px; margin-left: 8px;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+
+  #flatLog {
+    flex: 1; overflow-y: auto; padding: 10px 18px;
+    display: flex; flex-direction: column; gap: 8px;
+    font-size: 14px;
+  }
+  .msg { max-width: 80%; line-height: 1.5; }
+  .msg.user { align-self: flex-end; text-align: right; color: #8fb8c5; }
+  .msg.jarvis { align-self: flex-start; }
+  .msg.jarvis .label { font-size: 10px; letter-spacing: 2px; color: var(--hud-blue); margin-bottom: 2px; }
+  .msg.system { align-self: center; color: var(--hud-muted); font-size: 12px; text-align: center; }
+
+  footer {
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--hud-blue-dim);
+    display: flex; gap: 8px; align-items: center;
+    background: rgba(5,10,15,0.6);
+  }
+  #textInput {
+    flex: 1; background: rgba(10,22,32,0.85); border: 1px solid var(--hud-blue-dim);
+    color: var(--hud-text); border-radius: 20px; padding: 10px 16px; font-size: 14px; outline: none;
+  }
+  button.iconbtn {
+    background: rgba(10,22,32,0.85); border: 1px solid var(--hud-blue-dim);
+    color: var(--hud-blue); width: 40px; height: 40px; border-radius: 50%;
+    font-size: 15px; cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #micBtn.active { background: #ff5a5a; border-color: #ff5a5a; color: #fff; }
+
+  #settingsOverlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 20;
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  #settingsOverlay.open { display: flex; }
+  #settingsPanel {
+    background: #0a1620; border: 1px solid var(--hud-blue-dim); border-radius: 12px;
+    padding: 20px; width: 100%; max-width: 380px; max-height: 85vh; overflow-y: auto;
+  }
+  #settingsPanel h3 { margin: 0 0 14px; color: var(--hud-blue); font-size: 14px; letter-spacing: 2px; }
+  #settingsPanel label { display: block; font-size: 11px; color: var(--hud-muted); margin: 14px 0 5px; letter-spacing: 1px; }
+  #settingsPanel input { width: 100%; background: #03080c; border: 1px solid var(--hud-blue-dim); color: var(--hud-text); border-radius: 6px; padding: 9px 10px; font-size: 13px; outline: none; }
+  #settingsPanel .hint { font-size: 11px; color: var(--hud-muted); margin-top: 4px; line-height: 1.4; }
+  #settingsPanel .actions { display: flex; gap: 10px; margin-top: 20px; }
+  #settingsPanel button.primary, #settingsPanel button.secondary { flex: 1; padding: 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  #settingsPanel button.primary { background: var(--hud-blue); border: none; color: #04141c; font-weight: 600; }
+  #settingsPanel button.secondary { background: transparent; border: 1px solid var(--hud-blue-dim); color: var(--hud-muted); }
+
+  #vrNotice {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: var(--hud-muted); text-align: center; z-index: 5;
+    max-width: 90%;
+  }
+</style>
+</head>
+<body>
+
+<div id="canvasWrap"></div>
+
+<div id="overlay">
+  <header>
+    <div class="title">J.A.R.V.I.S. VR</div>
+    <div style="display:flex; align-items:center;">
+      <div id="vrBtnHolder"></div>
+      <button id="settingsBtn" aria-label="Settings">&#9881;</button>
+    </div>
+  </header>
+
+  <div id="flatLog">
+    <div class="msg system">SYSTEM ONLINE. PUT ON YOUR HEADSET AND TAP "ENTER VR" TO BEGIN, OR CHAT HERE FIRST.</div>
+  </div>
+
+  <footer>
+    <button class="iconbtn" id="micBtn" aria-label="Voice input">&#127908;</button>
+    <input id="textInput" type="text" placeholder="Type a command..." autocomplete="off">
+    <button class="iconbtn" id="sendBtn" aria-label="Send">&#10148;</button>
+  </footer>
+</div>
+
+<div id="vrNotice">Voice input is unreliable once inside an active VR session &mdash; type your messages before entering VR for best results.</div>
+
+<div id="settingsOverlay">
+  <div id="settingsPanel">
+    <h3>SYSTEM CONFIGURATION</h3>
+    <label>Groq API key</label>
+    <input id="apiKeyInput" type="password" placeholder="gsk_...">
+    <div class="hint">Same key as your phone Jarvis app. Get a free one at console.groq.com/keys.</div>
+
+    <label>Cerebras API key (optional, fallback)</label>
+    <input id="cerebrasKeyInput" type="password" placeholder="csk-...">
+    <div class="hint">Used automatically if Groq's daily limit is hit.</div>
+
+    <label style="margin-top:18px;">
+      <input type="checkbox" id="autoSpeakToggle" checked style="width:auto; vertical-align:middle; margin-right:6px;">
+      Speak responses aloud
+    </label>
+
+    <div class="actions">
+      <button class="secondary" id="closeSettings">Close</button>
+      <button class="primary" id="saveSettings">Save</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+/* ---------- State ---------- */
+const state = {
+  apiKey: '', cerebrasKey: '', autoSpeak: true, history: []
+};
+try {
+  const saved = JSON.parse(localStorage.getItem('jarvis_settings') || 'null');
+  if (saved) {
+    state.apiKey = saved.apiKey || '';
+    state.cerebrasKey = saved.cerebrasKey || '';
+    state.autoSpeak = saved.autoSpeak !== false;
+  }
+} catch (e) {}
+
+const JARVIS_SYSTEM_PROMPT = `You are J.A.R.V.I.S., a sophisticated AI assistant in the style of Tony Stark's AI from Iron Man, viewed here through a VR headset. You are not the actual copyrighted character, but an original assistant inspired by that archetype.
+- Speak with a calm, dry, understated British wit. Formal but warm, never sycophantic.
+- Address the user as "sir" or "ma'am" occasionally, or by name if given.
+- Keep responses CONCISE and conversational since they're spoken aloud — a few sentences, no lists or markdown.
+- Never break character unless directly and sincerely asked.`;
+
+/* ---------- DOM helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const flatLog = $('flatLog');
+function addMsg(text, role) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  if (role === 'jarvis') div.innerHTML = '<div class="label">JARVIS</div>' + escapeHtml(text);
+  else div.textContent = text;
+  flatLog.appendChild(div);
+  flatLog.scrollTop = flatLog.scrollHeight;
+  updateVRPanelText();
+}
+function escapeHtml(s) { const d = document.createElement('div'); d.innerText = s; return d.innerHTML; }
+
+/* ---------- Voice output ---------- */
+let voices = [];
+function loadVoices() { voices = speechSynthesis.getVoices(); }
+speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
+function speak(text) {
+  if (!state.autoSpeak) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const v = voices.find(v => /en-gb|british|daniel/i.test(v.name + v.lang)) || voices.find(v => /en-/i.test(v.lang));
+  if (v) u.voice = v;
+  speechSynthesis.speak(u);
+}
+
+/* ---------- Voice input (flat mode only) ---------- */
+let recognition = null;
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SpeechRecognition) {
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+  recognition.onstart = () => $('micBtn').classList.add('active');
+  recognition.onend = () => $('micBtn').classList.remove('active');
+  recognition.onresult = (e) => {
+    const t = e.results[0][0].transcript;
+    $('textInput').value = t;
+    sendMessage(t);
+  };
+} else {
+  $('micBtn').style.opacity = 0.3;
+}
+$('micBtn').addEventListener('click', () => {
+  if (!recognition) { addMsg('Voice input not supported in this browser.', 'system'); return; }
+  try { recognition.start(); } catch (e) {}
+});
+
+/* ---------- Sending messages ---------- */
+async function sendMessage(text) {
+  text = text.trim();
+  if (!text) return;
+  if (!state.apiKey && !state.cerebrasKey) {
+    addMsg('No API key configured. Tap the gear icon to add one.', 'system');
+    openSettings();
+    return;
+  }
+  addMsg(text, 'user');
+  $('textInput').value = '';
+  state.history.push({ role: 'user', content: text });
+
+  const messages = [{ role: 'system', content: JARVIS_SYSTEM_PROMPT }, ...state.history];
+  const providers = [];
+  if (state.apiKey) providers.push({ url: 'https://api.groq.com/openai/v1/chat/completions', key: state.apiKey, model: 'llama-3.3-70b-versatile' });
+  if (state.cerebrasKey) providers.push({ url: 'https://api.cerebras.ai/v1/chat/completions', key: state.cerebrasKey, model: 'gpt-oss-120b' });
+
+  let reply = null;
+  for (const p of providers) {
+    try {
+      const resp = await fetch(p.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.key },
+        body: JSON.stringify({ model: p.model, max_tokens: 400, messages })
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      reply = data.choices?.[0]?.message?.content?.trim();
+      if (reply) break;
+    } catch (e) {}
+  }
+  if (!reply) reply = "Apologies, I'm having trouble reaching my systems at the moment, sir.";
+  state.history.push({ role: 'assistant', content: reply });
+  addMsg(reply, 'jarvis');
+  speak(reply);
+}
+$('sendBtn').addEventListener('click', () => sendMessage($('textInput').value));
+$('textInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage($('textInput').value); });
+
+/* ---------- Settings ---------- */
+function openSettings() { $('settingsOverlay').classList.add('open'); }
+function closeSettings() { $('settingsOverlay').classList.remove('open'); }
+$('settingsBtn').addEventListener('click', openSettings);
+$('closeSettings').addEventListener('click', closeSettings);
+$('saveSettings').addEventListener('click', () => {
+  state.apiKey = $('apiKeyInput').value.trim();
+  state.cerebrasKey = $('cerebrasKeyInput').value.trim();
+  state.autoSpeak = $('autoSpeakToggle').checked;
+  try {
+    const existing = JSON.parse(localStorage.getItem('jarvis_settings') || '{}');
+    localStorage.setItem('jarvis_settings', JSON.stringify({ ...existing, ...state, history: undefined }));
+  } catch (e) {}
+  closeSettings();
+  addMsg('Configuration saved.', 'system');
+});
+$('apiKeyInput').value = state.apiKey;
+$('cerebrasKeyInput').value = state.cerebrasKey;
+$('autoSpeakToggle').checked = state.autoSpeak;
+if (!state.apiKey && !state.cerebrasKey) setTimeout(openSettings, 600);
+
+/* ====================================================================
+   THREE.JS / WEBXR SCENE
+   ==================================================================== */
+const canvasWrap = $('canvasWrap');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050a0f);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 50);
+camera.position.set(0, 1.6, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+canvasWrap.appendChild(renderer.domElement);
+
+$('vrBtnHolder').appendChild(VRButton.createButton(renderer));
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* Lighting */
+scene.add(new THREE.AmbientLight(0x223344, 1.2));
+const pointLight = new THREE.PointLight(0x4fd8ff, 2, 10);
+pointLight.position.set(0, 1.6, -1.5);
+scene.add(pointLight);
+
+/* Starfield */
+{
+  const starGeo = new THREE.BufferGeometry();
+  const starCount = 600;
+  const positions = new Float32Array(starCount * 3);
+  for (let i = 0; i < starCount; i++) {
+    const r = 8 + Math.random() * 10;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos((Math.random() * 2) - 1);
+    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta) + 1.6;
+    positions[i * 3 + 2] = r * Math.cos(phi);
+  }
+  starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const starMat = new THREE.PointsMaterial({ color: 0x4fd8ff, size: 0.025, transparent: true, opacity: 0.5 });
+  scene.add(new THREE.Points(starGeo, starMat));
+}
+
+/* Floating HUD group, anchored 1.5m in front at eye height */
+const hudGroup = new THREE.Group();
+hudGroup.position.set(0, 1.6, -1.5);
+scene.add(hudGroup);
+
+/* Concentric rings */
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x1a7a99, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+const ringMatBright = new THREE.MeshBasicMaterial({ color: 0x4fd8ff, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+
+function makeRing(radius, tube, mat) {
+  const geo = new THREE.TorusGeometry(radius, tube, 8, 64);
+  return new THREE.Mesh(geo, mat);
+}
+const ring1 = makeRing(0.42, 0.003, ringMat);
+const ring2 = makeRing(0.30, 0.004, ringMatBright);
+const ring3 = makeRing(0.20, 0.003, ringMat);
+hudGroup.add(ring1, ring2, ring3);
+
+/* Tick marks on outer ring */
+const tickGroup = new THREE.Group();
+for (let i = 0; i < 48; i++) {
+  const angle = (i / 48) * Math.PI * 2;
+  const tickGeo = new THREE.BoxGeometry(0.002, 0.025, 0.001);
+  const tick = new THREE.Mesh(tickGeo, ringMatBright);
+  tick.position.set(0.42 * Math.cos(angle), 0.42 * Math.sin(angle), 0);
+  tick.rotation.z = angle + Math.PI / 2;
+  tickGroup.add(tick);
+}
+hudGroup.add(tickGroup);
+
+/* Glowing core */
+const coreGeo = new THREE.SphereGeometry(0.06, 32, 32);
+const coreMat = new THREE.MeshBasicMaterial({ color: 0x4fd8ff });
+const core = new THREE.Mesh(coreGeo, coreMat);
+hudGroup.add(core);
+
+const glowGeo = new THREE.SphereGeometry(0.11, 32, 32);
+const glowMat = new THREE.MeshBasicMaterial({ color: 0x4fd8ff, transparent: true, opacity: 0.25 });
+const glow = new THREE.Mesh(glowGeo, glowMat);
+hudGroup.add(glow);
+
+/* Text panel (canvas texture) showing recent conversation, floats to the side */
+const textCanvas = document.createElement('canvas');
+textCanvas.width = 900; textCanvas.height = 600;
+const textCtx = textCanvas.getContext('2d');
+const textTexture = new THREE.CanvasTexture(textCanvas);
+const textPanelGeo = new THREE.PlaneGeometry(0.9, 0.6);
+const textPanelMat = new THREE.MeshBasicMaterial({ map: textTexture, transparent: true });
+const textPanel = new THREE.Mesh(textPanelGeo, textPanelMat);
+textPanel.position.set(0.85, 0, -0.3);
+textPanel.rotation.y = -0.4;
+hudGroup.add(textPanel);
+
+function updateVRPanelText() {
+  const ctx = textCtx;
+  ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
+  ctx.fillStyle = 'rgba(5,10,15,0.55)';
+  ctx.fillRect(0, 0, textCanvas.width, textCanvas.height);
+  ctx.strokeStyle = '#1a7a99';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, textCanvas.width - 2, textCanvas.height - 2);
+
+  const msgs = state.history.slice(-6);
+  ctx.font = '24px Arial';
+  let y = 50;
+  if (msgs.length === 0) {
+    ctx.fillStyle = '#4a7a8a';
+    ctx.fillText('Conversation will appear here.', 30, y);
+  }
+  msgs.forEach(m => {
+    ctx.fillStyle = m.role === 'user' ? '#8fb8c5' : '#4fd8ff';
+    const prefix = m.role === 'user' ? 'You: ' : 'Jarvis: ';
+    const words = (prefix + m.content).split(' ');
+    let line = '';
+    words.forEach(w => {
+      const test = line + w + ' ';
+      if (ctx.measureText(test).width > textCanvas.width - 60) {
+        ctx.fillText(line, 30, y);
+        y += 32;
+        line = w + ' ';
+      } else {
+        line = test;
+      }
+    });
+    ctx.fillText(line, 30, y);
+    y += 46;
+  });
+  textTexture.needsUpdate = true;
+}
+updateVRPanelText();
+
+/* Animate */
+let t = 0;
+function animate() {
+  t += 0.01;
+  ring1.rotation.z = t * 0.15;
+  ring2.rotation.z = -t * 0.22;
+  ring3.rotation.z = t * 0.3;
+  tickGroup.rotation.z = t * 0.15;
+
+  const pulse = 1 + Math.sin(t * 4) * (speechSynthesis.speaking ? 0.12 : 0.03);
+  core.scale.setScalar(pulse);
+  glow.scale.setScalar(pulse * 1.3);
+
+  renderer.render(scene, camera);
+}
+renderer.setAnimationLoop(animate);
+</script>
+</body>
+</html>
